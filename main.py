@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
 from weasyprint import HTML
 import fitz  # PyMuPDF
+from visual_links import internal_visual_page
 import os
 import shutil
 import uuid
@@ -482,12 +483,14 @@ async def build_pdf(
                     lw, lh = round(rect.x1 - rect.x0, 2), round(rect.y1 - rect.y0, 2)
                     href = escape_html(link["uri"])
                     block.append(f'<a href="{href}" title="{href}" aria-label="Link" style="display:block; position:absolute; left:{round(rect.x0, 2)}pt; top:{round(rect.y0, 2)}pt; width:{lw}pt; height:{lh}pt; z-index:90;"><img src="{transparent_gif}" alt="Link" style="width:100%; height:100%; border:none; outline:none; margin:0; padding:0;" /></a>')
-                elif link.get("kind") == fitz.LINK_GOTO and 0 <= link.get("page", -1) < visual_count:
+                elif (target_page := internal_visual_page(link, visual_count)) is not None:
                     # Internal jump (e.g. "Go to main screen", TOC / cross-references).
-                    # Map to the matching visual page, which carries id="page_{n}".
+                    # Word/Acrobat exports emit these as NAMED destinations (PyMuPDF
+                    # LINK_NAMED), explicit ones as LINK_GOTO; both resolve to a 0-based
+                    # target page. Map to the matching visual page (id="page_{n}").
                     rect = link["from"]
                     lw, lh = round(rect.x1 - rect.x0, 2), round(rect.y1 - rect.y0, 2)
-                    href = f"#page_{link['page']}"
+                    href = f"#page_{target_page}"
                     block.append(f'<a href="{href}" aria-label="Link" style="display:block; position:absolute; left:{round(rect.x0, 2)}pt; top:{round(rect.y0, 2)}pt; width:{lw}pt; height:{lh}pt; z-index:90;"><img src="{transparent_gif}" alt="Link" style="width:100%; height:100%; border:none; outline:none; margin:0; padding:0;" /></a>')
 
             # Layer 2.5: Plain-text URL Scanner
