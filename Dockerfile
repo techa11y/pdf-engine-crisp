@@ -1,5 +1,7 @@
 # Start with a lightweight Python Linux environment
-FROM python:3.10-slim
+# python:3.10 reached end-of-life in Oct 2026; 3.12 (same Debian trixie base) is supported until Oct 2028.
+# Pillow>=13 / pikepdf>=10.17 (advisory floors) need Python >=3.11.
+FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1

@@ -16,10 +16,12 @@ documents do not spike RSS.
 Maximum accepted upload size, in megabytes. **Default: `600`.**
 
 Raise it to accept larger source PDFs. It is applied to the multipart parser at
-startup and is version-robust: the current Starlette pin has no hard per-part
-cap, and this also overrides any per-part cap a future Starlette release might
-enforce (a bare class-attribute assignment would not, because the parser sets a
-per-instance default). Small PDFs behave exactly as before.
+startup. Starlette (>= 0.41, including the 1.x line now pinned) caps every
+non-file multipart part at 1 MiB by default, which would reject the
+`html_content` form field of a large `/build` request; this override lifts that
+cap to `MAX_PDF_UPLOAD_MB` (a bare class-attribute assignment would not, because
+the parser sets a per-instance default). File parts always spool to disk. Small
+PDFs behave exactly as before. Regression test: `tests/test_upload_limits.py`.
 
 ## Environment variables
 
