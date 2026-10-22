@@ -17,12 +17,14 @@ from datetime import datetime
 # --- LARGE UPLOAD SUPPORT: accept source PDFs up to MAX_PDF_UPLOAD_MB (default 600) ---
 # Source PDFs arrive as multipart file parts and are streamed to a temp file by the
 # endpoints below. Ensure the multipart parser never rejects a large part by size.
-# NOTE: Starlette 0.36.x (current pin) has no hard per-part cap - file parts spool to
-# disk - so raising this is effectively a no-op today. It also future-proofs against
-# Starlette versions that DO enforce a per-part cap: their per-instance default would
-# shadow a bare class-attribute assignment, so we also force it after construction.
-# We do NOT raise the in-memory spool threshold, so large uploads keep streaming to
-# disk instead of into RAM.
+# NOTE: Starlette >= 0.41 (CVE-2024-47874 fix) caps every NON-file multipart part at
+# max_part_size (default 1 MiB) - file parts still spool to disk - so without this
+# override a large `html_content` form field on /build is rejected with 400 "Part
+# exceeded maximum size". FastAPI calls request.form() with no arguments, so the cap
+# can only be lifted on the parser class: its per-instance default would shadow a bare
+# class-attribute assignment, so we also force it after construction (verified against
+# Starlette 1.9: tests/test_upload_limits.py). We do NOT raise the in-memory spool
+# threshold, so large uploads keep streaming to disk instead of into RAM.
 import starlette.formparsers
 
 MAX_PDF_UPLOAD_MB = int(os.getenv("MAX_PDF_UPLOAD_MB", "600"))
