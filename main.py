@@ -4,6 +4,7 @@ from weasyprint import HTML
 import fitz  # PyMuPDF
 from visual_links import internal_visual_page
 from raster_budget import capped_dpi
+from ai_image import render_ai_image
 import os
 import shutil
 import uuid
@@ -380,9 +381,8 @@ async def split_pdf_to_queue(file: UploadFile = File(...), original_pdf_url: str
             blocks = page.get_text("blocks")
             page_text = "\n".join([re.sub(r"MediaAlly|MediaA11y", "MediA11y", b[4]) for b in blocks if len(b) > 6 and b[6] == 0])
             
-            # --- 150 DPI FOR CRISPER AI TEXT RECOGNITION ---
-            pix = page.get_pixmap(dpi=capped_dpi(page.rect.width, page.rect.height, 150))
-            b64_img = base64.b64encode(pix.tobytes("jpeg", 90)).decode("utf-8")
+            # AI page image: 150 DPI, but never above the LLM's visual-token budget (ai_image.py)
+            b64_img = base64.b64encode(render_ai_image(page, 150)).decode("utf-8")
             
             pages_to_insert.append({
                 "job_id": job_id, "page_index": i, "page_text": page_text,
@@ -739,8 +739,7 @@ async def split_pdf_legacy(file: UploadFile = File(...)):
             blocks = page.get_text("blocks")
             page_text = "\n".join([re.sub(r"MediaAlly|MediaA11y", "MediA11y", b[4]) for b in blocks if len(b) > 6 and b[6] == 0])
             links = [link["uri"] for link in page.get_links() if "uri" in link and link["uri"]]
-            pix = page.get_pixmap(dpi=capped_dpi(page.rect.width, page.rect.height, 120))
-            b64_img = base64.b64encode(pix.tobytes("jpeg", 80)).decode("utf-8")
+            b64_img = base64.b64encode(render_ai_image(page, 120)).decode("utf-8")
 
             chunks.append({
                 "chunk_index": i, "text": page_text,
