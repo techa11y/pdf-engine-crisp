@@ -4,6 +4,7 @@ from weasyprint import HTML
 import fitz  # PyMuPDF
 from visual_links import internal_visual_page
 from raster_budget import capped_dpi
+from resource_policy import RestrictedURLFetcher
 import os
 import shutil
 import uuid
@@ -600,6 +601,13 @@ async def build_pdf(
     <meta name="keywords" content="{escape_html(final_keywords)}">
     <style>
         body {{ font-family: Arial, Helvetica, sans-serif; font-size: 12pt; margin: 0; color: #000; line-height: 1.6; }}
+        /* WeasyPrint >= 66 (pinned 70.0) turns every <button> and <input type=submit> into a PDF
+           push-button field when pdf_forms=True. With no ancestor <form> it raises
+           "'NoneType' object has no attribute 'element'"; inside a POST form it writes a dangling
+           field reference and the PDF is corrupt. appearance:none makes WeasyPrint render them as
+           ordinary content (the 62.3 output). The worker adds the same inline style before /build
+           (neutralizeHtmlButtons); this keeps the engine safe when that guard is skipped. */
+        button, input[type="submit"] {{ appearance: none !important; }}
         {chr(10).join(dynamic_css)}
         
         @page toc {{ 
@@ -638,7 +646,7 @@ async def build_pdf(
         del dynamic_css
         gc.collect()
 
-        temp_weasy_doc = HTML(string=master_html).render()
+        temp_weasy_doc = HTML(string=master_html, url_fetcher=RestrictedURLFetcher(allowed_files=temp_image_paths)).render()
         total_pages = len(temp_weasy_doc.pages)
         toc_text = f"(Page {text_start})" if total_pages == text_start else f"(Pages {text_start}-{total_pages})"
         final_master_html = master_html.replace("([TEXT_PAGES_TOC_PLACEHOLDER])", toc_text)
@@ -649,7 +657,9 @@ async def build_pdf(
         del master_html
         gc.collect()
 
-        HTML(string=final_master_html).write_pdf(target=weasy_out_path, pdf_variant="pdf/ua-1", pdf_forms=True)
+        # Only data: URIs and this request's own page images may be loaded (resource_policy.py).
+        HTML(string=final_master_html, url_fetcher=RestrictedURLFetcher(allowed_files=temp_image_paths)).write_pdf(
+            target=weasy_out_path, pdf_variant="pdf/ua-1", pdf_forms=True)
 
         pdf_out = fitz.open(weasy_out_path)
 
