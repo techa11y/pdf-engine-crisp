@@ -93,10 +93,32 @@ def test_attachment_of_local_file_is_not_embedded():
 
 
 def test_remote_resources_are_not_fetched():
-    # 127.0.0.1:1 refuses connections; a blocked fetch never reaches the network at all.
-    pdf_bytes = _build('<p><img src="http://127.0.0.1:1/x.png" alt="remote"></p>')
+    """No request may reach a server named in the page HTML, in ANY render pass
+    (/build lays the document out twice: a TOC page-number pass and the final write)."""
+    import http.server, threading
+    hits = []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            hits.append(self.path)
+            self.send_response(404)
+            self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    try:
+        pdf_bytes = _build(f'<p><img src="{base}/img.png" alt="remote"></p>'
+                           f'<link rel="attachment" href="{base}/attach.txt">'
+                           f'<link rel="stylesheet" href="{base}/style.css">')
+    finally:
+        srv.shutdown()
     assert pdf_bytes.startswith(b"%PDF")
-    print("ok: remote image URLs in the page HTML are refused, the build still succeeds")
+    assert hits == [], f"engine fetched URLs named in the page HTML: {hits}"
+    print("ok: no request reaches a URL named in the page HTML (both render passes)")
 
 
 def test_engine_visual_page_image_still_rendered():

@@ -646,7 +646,7 @@ async def build_pdf(
         del dynamic_css
         gc.collect()
 
-        temp_weasy_doc = HTML(string=master_html).render()
+        temp_weasy_doc = HTML(string=master_html, url_fetcher=RestrictedURLFetcher(allowed_files=temp_image_paths)).render()
         total_pages = len(temp_weasy_doc.pages)
         toc_text = f"(Page {text_start})" if total_pages == text_start else f"(Pages {text_start}-{total_pages})"
         final_master_html = master_html.replace("([TEXT_PAGES_TOC_PLACEHOLDER])", toc_text)
