@@ -4,6 +4,7 @@ from weasyprint import HTML
 import fitz  # PyMuPDF
 from visual_links import internal_visual_page
 from raster_budget import capped_dpi
+from resource_policy import RestrictedURLFetcher
 import os
 import shutil
 import uuid
@@ -656,7 +657,9 @@ async def build_pdf(
         del master_html
         gc.collect()
 
-        HTML(string=final_master_html).write_pdf(target=weasy_out_path, pdf_variant="pdf/ua-1", pdf_forms=True)
+        # Only data: URIs and this request's own page images may be loaded (resource_policy.py).
+        HTML(string=final_master_html, url_fetcher=RestrictedURLFetcher(allowed_files=temp_image_paths)).write_pdf(
+            target=weasy_out_path, pdf_variant="pdf/ua-1", pdf_forms=True)
 
         pdf_out = fitz.open(weasy_out_path)
 
