@@ -600,6 +600,13 @@ async def build_pdf(
     <meta name="keywords" content="{escape_html(final_keywords)}">
     <style>
         body {{ font-family: Arial, Helvetica, sans-serif; font-size: 12pt; margin: 0; color: #000; line-height: 1.6; }}
+        /* WeasyPrint >= 66 (pinned 70.0) turns every <button> and <input type=submit> into a PDF
+           push-button field when pdf_forms=True. With no ancestor <form> it raises
+           "'NoneType' object has no attribute 'element'"; inside a POST form it writes a dangling
+           field reference and the PDF is corrupt. appearance:none makes WeasyPrint render them as
+           ordinary content (the 62.3 output). The worker adds the same inline style before /build
+           (neutralizeHtmlButtons); this keeps the engine safe when that guard is skipped. */
+        button, input[type="submit"] {{ appearance: none !important; }}
         {chr(10).join(dynamic_css)}
         
         @page toc {{ 
