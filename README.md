@@ -28,6 +28,7 @@ PDFs behave exactly as before. Regression test: `tests/test_upload_limits.py`.
 | var | default | purpose |
 |-----|---------|---------|
 | `MAX_PDF_UPLOAD_MB` | `600` | max multipart upload size (MB) |
+| `PDF_VISUAL_MAX_PIXELS` | `30000000` | pixel budget per rasterized page (visual pages and AI page images). The DPI is lowered only for pages that would exceed it, so Letter/Tabloid keep full resolution while a 33×55 in poster renders at ~128 DPI instead of 113 MP (which OOM-killed a 2 GiB instance). `0` disables the cap. |
 | `PORT` | `10000` | uvicorn listen port |
 | `SUPABASE_URL` | – | Supabase project URL (job queue + built-PDF storage) |
 | `SUPABASE_KEY` | – | Supabase service key |

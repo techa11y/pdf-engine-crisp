@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from weasyprint import HTML
 import fitz  # PyMuPDF
 from visual_links import internal_visual_page
+from raster_budget import capped_dpi
 import os
 import shutil
 import uuid
@@ -380,7 +381,7 @@ async def split_pdf_to_queue(file: UploadFile = File(...), original_pdf_url: str
             page_text = "\n".join([re.sub(r"MediaAlly|MediaA11y", "MediA11y", b[4]) for b in blocks if len(b) > 6 and b[6] == 0])
             
             # --- 150 DPI FOR CRISPER AI TEXT RECOGNITION ---
-            pix = page.get_pixmap(dpi=150)
+            pix = page.get_pixmap(dpi=capped_dpi(page.rect.width, page.rect.height, 150))
             b64_img = base64.b64encode(pix.tobytes("jpeg", 90)).decode("utf-8")
             
             pages_to_insert.append({
@@ -465,7 +466,10 @@ async def build_pdf(
             
             # --- CRITICAL FIX: MEMORY-SAFE CRISP RESOLUTION ---
             # 200 DPI / 85% Quality prevents the 512MB RAM Crash while maintaining crisp visuals
-            pix = page_orig.get_pixmap(dpi=250)
+            dpi_i = capped_dpi(w, h, 250)
+            if dpi_i < 250:
+                logger.info("[BUILD] page %d is %.0fx%.0f in; rasterizing at %d DPI (pixel budget)", i + 1, w / 72, h / 72, dpi_i)
+            pix = page_orig.get_pixmap(dpi=dpi_i)
             img_data = pix.tobytes("jpeg", 85)
             with open(img_path, "wb") as img_file:
                 img_file.write(img_data)
@@ -735,7 +739,7 @@ async def split_pdf_legacy(file: UploadFile = File(...)):
             blocks = page.get_text("blocks")
             page_text = "\n".join([re.sub(r"MediaAlly|MediaA11y", "MediA11y", b[4]) for b in blocks if len(b) > 6 and b[6] == 0])
             links = [link["uri"] for link in page.get_links() if "uri" in link and link["uri"]]
-            pix = page.get_pixmap(dpi=120)
+            pix = page.get_pixmap(dpi=capped_dpi(page.rect.width, page.rect.height, 120))
             b64_img = base64.b64encode(pix.tobytes("jpeg", 80)).decode("utf-8")
 
             chunks.append({
