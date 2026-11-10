@@ -5,6 +5,7 @@ import fitz  # PyMuPDF
 from visual_links import internal_visual_page
 from raster_budget import capped_dpi
 from resource_policy import RestrictedURLFetcher
+from visual_banner import banner_layout
 import os
 import shutil
 import uuid
@@ -480,6 +481,11 @@ async def build_pdf(
 
             block = []
             block.append(f'<div id="page_{i}" class="visual-page" style="page: page_{i}; position: relative; width: {w}pt; height: {h}pt; page-break-after: always; overflow: hidden; background-color: white;">')
+            if guide_style == "v2":
+                # The banner gets its own strip at the top; the page image and its link and
+                # form overlays are scaled to fit underneath it (see visual_banner.py).
+                banner = banner_layout(w, h)
+                block.append(f'<div style="position:absolute; left:{banner.offset_x}pt; top:{banner.band}pt; width:{w}pt; height:{h}pt; transform:scale({banner.scale}); transform-origin:0 0;">')
             block.append(f'<img src="file://{img_path}" alt="Visual representation of page {i + 1}" style="position: absolute; top: 0; left: 0; width: {w}pt; height: {h}pt; z-index: 1;" />')
 
             # Layer 2: Clickable Links (Native)
@@ -531,7 +537,8 @@ async def build_pdf(
             
             # Layer 4: Footer Badge
             if guide_style == "v2":
-                block.append(f'<div style="position:absolute; top:0; left:0; right:0; background:#ffffff; z-index:100; border-bottom:1pt solid #000; padding:3pt 8pt; text-align:center; font-family:Arial,Helvetica,sans-serif; font-size:9pt; color:#000;" aria-hidden="true">Remediated by MediaA11y &nbsp;&#124;&nbsp; Visual page {i + 1} of {visual_count} &nbsp;&#124;&nbsp; Screen reader users: accessible text begins page {visual_count + 2}</div>')
+                block.append('</div>')
+                block.append(f'<div style="position:absolute; top:0; left:0; width:{w}pt; height:{banner.band}pt; box-sizing:border-box; background:#ffffff; z-index:100; border-bottom:1pt solid #000; padding:0 8pt; line-height:{banner.band - 1}pt; white-space:nowrap; overflow:hidden; text-align:center; font-family:Arial,Helvetica,sans-serif; font-size:{banner.font_pt}pt; color:#000;" aria-hidden="true">Remediated by MediaA11y &nbsp;&#124;&nbsp; Visual page {i + 1} of {visual_count} &nbsp;&#124;&nbsp; Screen reader users: accessible text begins page {visual_count + 2}</div>')
             else:
                 block.append(f'<div style="position: absolute; bottom: 15pt; right: 15pt; background-color: #ffffff; z-index: 100; border: 1pt solid #000000; padding: 4pt 8pt; display: block; border-radius: 4pt;" aria-hidden="true"><div style="text-align: center; font-family: Arial, sans-serif; font-size: 10pt; font-weight: bold; color: #000000;">Visual Page {i + 1}</div></div>')
             
