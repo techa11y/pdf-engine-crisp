@@ -32,8 +32,22 @@ PDFs behave exactly as before. Regression test: `tests/test_upload_limits.py`.
 | `PORT` | `10000` | uvicorn listen port |
 | `SUPABASE_URL` | – | Supabase project URL (job queue + built-PDF storage) |
 | `SUPABASE_KEY` | – | Supabase service key |
+| `PDF_ENGINE_SECRET` | unset (check off) | shared secret: when set, every endpoint except `/healthz` needs the same value in the `x-pdf-engine-key` header, else 401. See "Access" below. |
 
 See `.env.example`.
+
+## Access: shared secret (`PDF_ENGINE_SECRET`)
+
+`engine_auth.py` (same file as in pdf-enginev2) checks the `x-pdf-engine-key` header on
+every request (constant-time compare) and answers `401 {"error": "unauthorized"}` when it
+is missing or wrong, before the endpoint runs. `/healthz` stays open. **Off while
+`PDF_ENGINE_SECRET` is unset or blank**, so deploying the code changes nothing. To turn it
+on without a failed request, set the same value on the callers first (the TechA11y worker
+on Render sends the header whenever its own `PDF_ENGINE_SECRET` is set; an engine without
+the check ignores it), then on both engines. Regression test: `tests/test_engine_auth.py`.
+
+This engine has no endpoint that downloads a caller-supplied URL (no `/merge-parts`), and
+WeasyPrint's resource loading on `/build` is already restricted by `resource_policy.py`.
 
 ## Picture pages: the original's own form fields (`native_form_fields.py`)
 
