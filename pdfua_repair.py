@@ -441,7 +441,10 @@ def repair_pdfua_annotations(
 
                     if Name.Parent in annot and isinstance(annot[Name.Parent], Dictionary):
                         parent_field = annot[Name.Parent]
-                        parent_field[Name.TU] = String(label)
+                        # A radio group's own label (its question) is kept: copying each button's label onto
+                        # it left the group named after its LAST button (native_form_fields.py, 2026-11-24).
+                        if not str(parent_field.get(Name.TU, "")).strip():
+                            parent_field[Name.TU] = String(label)
                         if Name.T not in parent_field and Name.T in annot:
                             parent_field[Name.T] = annot[Name.T]
 
