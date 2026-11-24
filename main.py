@@ -186,21 +186,29 @@ def normalize_forms_payload(corrected_forms_json: str):
             })
     return normalized
 
+# Opening tags the worker wraps each page in (`<section aria-label="Page N">`, `<div lang>`) or that the page's
+# own HTML opens with: the page's first heading may sit inside them.
+_LEADING_WRAPPERS = r"^(\s*(?:<(?:section|div|article|main|header)\b[^>]*>\s*)*)"
+
+
 def strip_duplicate_leading_title(html_content: str, document_title: str) -> str:
+    """Drop the document's first heading (or paragraph) when it repeats the title the text section already opens
+    with (`#accessible-text-header`). The heading may sit inside the page wrappers; the wrappers are kept."""
     if not html_content or not document_title:
         return html_content
     normalized_title = re.sub(r"\s+", " ", document_title).strip().lower()
-    patterns = [r"^\s*<h1[^>]*>(.*?)</h1>", r"^\s*<h2[^>]*>(.*?)</h2>", r"^\s*<p[^>]*>(.*?)</p>"]
-    cleaned = html_content
+    patterns = [_LEADING_WRAPPERS + r"<h1[^>]*>(.*?)</h1>", _LEADING_WRAPPERS + r"<h2[^>]*>(.*?)</h2>",
+                _LEADING_WRAPPERS + r"<p[^>]*>(.*?)</p>"]
     for pattern in patterns:
-        m = re.search(pattern, cleaned, flags=re.IGNORECASE | re.DOTALL)
-        if not m: continue
-        first_text = re.sub(r"<[^>]+>", " ", m.group(1))
+        m = re.search(pattern, html_content, flags=re.IGNORECASE | re.DOTALL)
+        if not m:
+            continue
+        first_text = re.sub(r"<[^>]+>", " ", m.group(2))
         first_text = re.sub(r"\s+", " ", first_text).strip().lower()
         if first_text == normalized_title:
-            cleaned = re.sub(pattern, "", cleaned, count=1, flags=re.IGNORECASE | re.DOTALL).lstrip()
-            break
-    return cleaned
+            return m.group(1) + html_content[m.end():].lstrip()
+        break
+    return html_content
 
 def build_form_control(page_index: int, field_index: int, f: dict) -> str:
     x0, y0, x1, y1 = f["x0"], f["y0"], f["x1"], f["y1"]
