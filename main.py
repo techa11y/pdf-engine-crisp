@@ -9,6 +9,10 @@ from visual_banner import banner_layout
 from visual_checkboxes import RasterBudget, checkbox_overlay
 from native_form_fields import (FieldNames, apply_field_values, blank_for_raster, native_fields_overlay,
                                 read_native_fields, settle_radio_names)
+from a11y_labels import safe_lang, visual_link_label
+import lang_tags
+
+lang_tags.install()  # carry HTML lang attributes into the PDF tag tree
 import os
 import shutil
 import uuid
@@ -425,9 +429,15 @@ async def build_pdf(
     original_pdf: UploadFile = File(...),
     document_title: str = Form(...),
     pdf_keywords: str = Form(""),
-    guide_style: str = Form("classic")
+    guide_style: str = Form("classic"),
+    # Omitted -> en-US (see a11y_labels.safe_lang).
+    document_lang: str | None = Form(None)
 ):
     logger.info(f"[BUILD] guide_style received = {guide_style!r}")
+    doc_lang = safe_lang(document_lang)
+    # Text this engine writes itself (guide page, visual-page labels) is English.
+    # Mark it so when the document is in another language.
+    gen_lang_attr = "" if doc_lang.split("-")[0] == "en" else ' lang="en"'
     req_id = str(uuid.uuid4())
     orig_path = f"/tmp/temp_orig_{req_id}.pdf"
     weasy_out_path = f"/tmp/weasy_out_{req_id}.pdf"
@@ -499,7 +509,7 @@ async def build_pdf(
             gc.collect()
 
             block = []
-            block.append(f'<div id="page_{i}" class="visual-page" style="page: page_{i}; position: relative; width: {w}pt; height: {h}pt; page-break-after: always; overflow: hidden; background-color: white;">')
+            block.append(f'<div id="page_{i}" class="visual-page"{gen_lang_attr} style="page: page_{i}; position: relative; width: {w}pt; height: {h}pt; page-break-after: always; overflow: hidden; background-color: white;">')
             if guide_style == "v2":
                 # The banner gets its own strip at the top; the page image and its link and
                 # form overlays are scaled to fit underneath it (see visual_banner.py).
@@ -514,7 +524,8 @@ async def build_pdf(
                     rect = link["from"]
                     lw, lh = round(rect.x1 - rect.x0, 2), round(rect.y1 - rect.y0, 2)
                     href = escape_html(link["uri"])
-                    block.append(f'<a href="{href}" title="{href}" aria-label="Link" style="display:block; position:absolute; left:{round(rect.x0, 2)}pt; top:{round(rect.y0, 2)}pt; width:{lw}pt; height:{lh}pt; z-index:90;"><img src="{transparent_gif}" alt="Link" style="width:100%; height:100%; border:none; outline:none; margin:0; padding:0;" /></a>')
+                    link_label = escape_html(visual_link_label(link["uri"]))
+                    block.append(f'<a href="{href}" title="{href}" aria-label="{link_label}" style="display:block; position:absolute; left:{round(rect.x0, 2)}pt; top:{round(rect.y0, 2)}pt; width:{lw}pt; height:{lh}pt; z-index:90;"><img src="{transparent_gif}" alt="{link_label}" style="width:100%; height:100%; border:none; outline:none; margin:0; padding:0;" /></a>')
                 elif (target_page := internal_visual_page(link, visual_count)) is not None:
                     # Internal jump (e.g. "Go to main screen", TOC / cross-references).
                     # Word/Acrobat exports emit these as NAMED destinations (PyMuPDF
@@ -523,7 +534,8 @@ async def build_pdf(
                     rect = link["from"]
                     lw, lh = round(rect.x1 - rect.x0, 2), round(rect.y1 - rect.y0, 2)
                     href = f"#page_{target_page}"
-                    block.append(f'<a href="{href}" aria-label="Link" style="display:block; position:absolute; left:{round(rect.x0, 2)}pt; top:{round(rect.y0, 2)}pt; width:{lw}pt; height:{lh}pt; z-index:90;"><img src="{transparent_gif}" alt="Link" style="width:100%; height:100%; border:none; outline:none; margin:0; padding:0;" /></a>')
+                    link_label = escape_html(visual_link_label(href, target_page))
+                    block.append(f'<a href="{href}" aria-label="{link_label}" style="display:block; position:absolute; left:{round(rect.x0, 2)}pt; top:{round(rect.y0, 2)}pt; width:{lw}pt; height:{lh}pt; z-index:90;"><img src="{transparent_gif}" alt="{link_label}" style="width:100%; height:100%; border:none; outline:none; margin:0; padding:0;" /></a>')
 
             # Layer 2.5: Plain-text URL Scanner
             words = page_orig.get_text("words")
@@ -538,7 +550,8 @@ async def build_pdf(
                         lw, lh = x1 - x0, y1 - y0
                         href = escape_html(full_url)
                         all_doc_links.add(full_url)
-                        block.append(f'<a href="{href}" title="{href}" style="display:block; position:absolute; left:{round(x0, 2)}pt; top:{round(y0, 2)}pt; width:{round(lw, 2)}pt; height:{round(lh, 2)}pt; z-index:90;"><img src="{transparent_gif}" alt="Link" style="width:100%; height:100%; border:none; outline:none; margin:0; padding:0;" /></a>')
+                        link_label = escape_html(visual_link_label(full_url))
+                        block.append(f'<a href="{href}" title="{href}" aria-label="{link_label}" style="display:block; position:absolute; left:{round(x0, 2)}pt; top:{round(y0, 2)}pt; width:{round(lw, 2)}pt; height:{round(lh, 2)}pt; z-index:90;"><img src="{transparent_gif}" alt="{link_label}" style="width:100%; height:100%; border:none; outline:none; margin:0; padding:0;" /></a>')
                 if "@" in text and "." in text:
                     email_match = re.search(r'([\w\.\-]+@[\w\.\-]+\.[a-zA-Z]{2,4})', text)
                     if email_match:
@@ -548,7 +561,8 @@ async def build_pdf(
                         lw, lh = x1 - x0, y1 - y0
                         href = escape_html(full_url)
                         all_doc_links.add(full_url)
-                        block.append(f'<a href="{href}" title="{href}" style="display:block; position:absolute; left:{round(x0, 2)}pt; top:{round(y0, 2)}pt; width:{round(lw, 2)}pt; height:{round(lh, 2)}pt; z-index:90;"><img src="{transparent_gif}" alt="Link" style="width:100%; height:100%; border:none; outline:none; margin:0; padding:0;" /></a>')
+                        link_label = escape_html(visual_link_label(full_url))
+                        block.append(f'<a href="{href}" title="{href}" aria-label="{link_label}" style="display:block; position:absolute; left:{round(x0, 2)}pt; top:{round(y0, 2)}pt; width:{round(lw, 2)}pt; height:{round(lh, 2)}pt; z-index:90;"><img src="{transparent_gif}" alt="{link_label}" style="width:100%; height:100%; border:none; outline:none; margin:0; padding:0;" /></a>')
 
             # Layer 3: Forms. A page with the original's own fields takes those (exact spot, name, label,
             # value); the worker's AI boxes are only for a page without any.
@@ -601,7 +615,7 @@ async def build_pdf(
         )
 
         if guide_style == "v2":
-            guide_html = f"""<div class="toc-page">
+            guide_html = f"""<div class="toc-page"{gen_lang_attr}>
         <h1>Accessibility Remediation Guide</h1>
         <p><strong>Remediated by MediaA11y</strong></p>
         <p>{escape_html(pdf_title)}</p>
@@ -619,7 +633,7 @@ async def build_pdf(
         </div>
     </div>"""
         else:
-            guide_html = f"""<div class="toc-page">
+            guide_html = f"""<div class="toc-page"{gen_lang_attr}>
         <h1>Accessibility Remediation Guide</h1>
         <p>This document has been enhanced for universal accessibility.</p>
         <h2>Table of Contents</h2>
@@ -635,7 +649,7 @@ async def build_pdf(
 
         master_html = f"""
 <!DOCTYPE html>
-<html lang="en-US">
+<html lang="{doc_lang}">
 <head>
     <meta charset="utf-8">
     <title>{escape_html(pdf_title)}</title>
@@ -720,7 +734,7 @@ async def build_pdf(
         apply_field_values(pdf_out, native_field_values)
         settle_radio_names(pdf_out, field_names.radio_groups())
         pdf_out.set_metadata(metadata_final)
-        pdf_out.set_language("en-US")
+        pdf_out.set_language(doc_lang)
 
         for i in range(len(pdf_out)):
             page_xref = pdf_out.page_xref(i)
