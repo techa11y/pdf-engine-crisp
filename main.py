@@ -6,6 +6,7 @@ from visual_links import internal_visual_page
 from raster_budget import capped_dpi
 from resource_policy import RestrictedURLFetcher
 from visual_banner import banner_layout
+from visual_checkboxes import RasterBudget, checkbox_overlay
 import os
 import shutil
 import uuid
@@ -452,6 +453,8 @@ async def build_pdf(
         pdf_creation_date = orig_meta.get("creationDate") or fitz.get_pdf_now()
 
         ai_forms = normalize_forms_payload(corrected_forms_json)
+        checkbox_budget = RasterBudget()
+        visual_checkboxes_placed = 0
         html_content = strip_duplicate_leading_title(html_content, pdf_title)
 
         visual_html_blocks = []
@@ -534,6 +537,12 @@ async def build_pdf(
             # Layer 3: Forms
             for field_index, field in enumerate(ai_forms.get(str(i), [])):
                 block.append(build_form_control(i, field_index, field))
+            # Layer 3b: real checkboxes over the boxes printed on the original (visual_checkboxes.py),
+            # so a box on a picture page can be ticked. Same coordinates as the links above.
+            cb_html, cb_count = checkbox_overlay(page_orig, i, checkbox_budget)
+            if cb_count:
+                block.append(cb_html)
+                visual_checkboxes_placed += cb_count
             
             # Layer 4: Footer Badge
             if guide_style == "v2":
@@ -545,6 +554,8 @@ async def build_pdf(
             block.append('</div>')
             visual_html_blocks.append("".join(block))
 
+        if visual_checkboxes_placed:
+            logger.info(f"[BUILD] picture pages: {visual_checkboxes_placed} printed checkbox(es) made tickable")
         doc_orig.close()
 
         links_appendix = ""
