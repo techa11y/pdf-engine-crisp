@@ -35,6 +35,15 @@ PDFs behave exactly as before. Regression test: `tests/test_upload_limits.py`.
 
 See `.env.example`.
 
+## Picture pages: the original's own form fields (`native_form_fields.py`)
+
+When the original is fillable, its picture pages keep working fields: every editable text, check box, radio
+button, combo box and list box of the original becomes a real field at its own spot, with its own name, its
+label (/TU, else the words beside it), and its value, ticks and choices. Read-only fields, push buttons and
+signatures stay as pictures. Text and choice values are written into the fields after WeasyPrint (never into
+the page), and the picture shows each field empty, so nothing shows twice. A page with such fields ignores the
+`corrected_forms_json` boxes. Test: `python tests/test_native_form_fields.py` (form: `tests/fillable_fixture.py`).
+
 ## Run
 
 ```
