@@ -23,7 +23,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     poppler-utils \
     tesseract-ocr \
+    fontconfig \
     && rm -rf /var/lib/apt/lists/*
+
+# Emoji glyphs (2026-11-23): without an emoji font WeasyPrint prints emoji as .notdef with no Unicode
+# mapping (veraPDF PDF/UA-1 7.21.7-1 / 7.21.8-1). Monochrome Noto Emoji (OFL); a color font fails 7.21.5.
+# Pango falls back to it for any character the text font lacks. See fonts/README.md.
+COPY fonts/ /usr/share/fonts/truetype/noto-emoji/
+RUN fc-cache -f
 
 WORKDIR /app
 
