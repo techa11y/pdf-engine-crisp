@@ -7,6 +7,8 @@ from raster_budget import capped_dpi
 from resource_policy import RestrictedURLFetcher
 from visual_banner import banner_layout
 from visual_checkboxes import RasterBudget, checkbox_overlay
+from native_form_fields import (FieldNames, apply_field_values, blank_for_raster, native_fields_overlay,
+                                read_native_fields, settle_radio_names)
 import os
 import shutil
 import uuid
@@ -462,6 +464,10 @@ async def build_pdf(
         checkbox_budget = RasterBudget()
         visual_checkboxes_placed = 0
         html_content = strip_duplicate_leading_title(html_content, pdf_title)
+        # The original's own form fields (native_form_fields.py): names stay unique across the whole build.
+        field_names = FieldNames(html_content)
+        native_field_values = {}
+        native_fields_placed = 0
 
         visual_html_blocks = []
         dynamic_css = []
@@ -480,6 +486,10 @@ async def build_pdf(
             dpi_i = capped_dpi(w, h, 250)
             if dpi_i < 250:
                 logger.info("[BUILD] page %d is %.0fx%.0f in; rasterizing at %d DPI (pixel budget)", i + 1, w / 72, h / 72, dpi_i)
+            # The original's editable fields become real fields below (Layer 3); the picture shows them empty.
+            native_fields = read_native_fields(page_orig)
+            if native_fields:
+                page_orig = blank_for_raster(page_orig, native_fields)
             pix = page_orig.get_pixmap(dpi=dpi_i)
             img_data = pix.tobytes("jpeg", 85)
             with open(img_path, "wb") as img_file:
@@ -540,9 +550,16 @@ async def build_pdf(
                         all_doc_links.add(full_url)
                         block.append(f'<a href="{href}" title="{href}" style="display:block; position:absolute; left:{round(x0, 2)}pt; top:{round(y0, 2)}pt; width:{round(lw, 2)}pt; height:{round(lh, 2)}pt; z-index:90;"><img src="{transparent_gif}" alt="Link" style="width:100%; height:100%; border:none; outline:none; margin:0; padding:0;" /></a>')
 
-            # Layer 3: Forms
-            for field_index, field in enumerate(ai_forms.get(str(i), [])):
-                block.append(build_form_control(i, field_index, field))
+            # Layer 3: Forms. A page with the original's own fields takes those (exact spot, name, label,
+            # value); the worker's AI boxes are only for a page without any.
+            if native_fields:
+                nf_html, nf_values, nf_count = native_fields_overlay(native_fields, i, field_names)
+                block.append(nf_html)
+                native_field_values.update(nf_values)
+                native_fields_placed += nf_count
+            else:
+                for field_index, field in enumerate(ai_forms.get(str(i), [])):
+                    block.append(build_form_control(i, field_index, field))
             # Layer 3b: real checkboxes over the boxes printed on the original (visual_checkboxes.py),
             # so a box on a picture page can be ticked. Same coordinates as the links above.
             cb_html, cb_count = checkbox_overlay(page_orig, i, checkbox_budget)
@@ -562,6 +579,8 @@ async def build_pdf(
 
         if visual_checkboxes_placed:
             logger.info(f"[BUILD] picture pages: {visual_checkboxes_placed} printed checkbox(es) made tickable")
+        if native_fields_placed:
+            logger.info(f"[BUILD] picture pages: {native_fields_placed} of the original's own form field(s) kept working")
         doc_orig.close()
 
         links_appendix = ""
@@ -697,6 +716,9 @@ async def build_pdf(
             "creationDate": str(pdf_creation_date or fitz.get_pdf_now()),
             "modDate": fitz.get_pdf_now()
         }
+        # Text and choice values of the original's fields: written into the fields, never printed on the page.
+        apply_field_values(pdf_out, native_field_values)
+        settle_radio_names(pdf_out, field_names.radio_groups())
         pdf_out.set_metadata(metadata_final)
         pdf_out.set_language("en-US")
 
