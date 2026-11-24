@@ -63,6 +63,12 @@ logging.getLogger('fontTools').setLevel(logging.ERROR)
 
 app = FastAPI(title="MediA11y Enterprise PDF - CRISP WORKER")
 
+# --- SHARED-SECRET CHECK (engine_auth.py) ---
+# Once PDF_ENGINE_SECRET is set, every endpoint except /healthz needs the same value in the
+# x-pdf-engine-key header (401 otherwise). Unset = open, exactly as before.
+from engine_auth import EngineKeyMiddleware
+app.add_middleware(EngineKeyMiddleware)
+
 # =================================================================
 # UTILITY FUNCTIONS
 # =================================================================
