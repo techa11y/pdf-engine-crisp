@@ -68,6 +68,21 @@ whose fields are tagged out of row order or lack `/Tabs /S`: response header `X-
 in the JSON response when the PDF is uploaded). veraPDF does not check field order. The file is identical in
 both engines. Test: `python tests/test_field_order.py`.
 
+## Picture pages: text contrast report (`contrast_check.py`)
+
+Picture pages keep the original's colours, so low-contrast text stays as the publisher made it. Each build
+measures it and reports it; it never changes a colour (checklist 1.3). For each original page:
+- text spans come from PyMuPDF's text trace (colour, size, bold, render mode, opacity); invisible text such as
+  an OCR layer is skipped;
+- the background is read from a 72 DPI render of the page with its text removed, so glyphs don't mix in;
+- ratios use the WCAG 2 formula (the TypeScript twin is `server/services/contrast-math.ts` in the TechA11y
+  platform): large text (at least 18 pt, or 14 pt bold) needs 3:1, other text 4.5:1.
+
+The report is in the `X-Contrast` header (and `contrast` in the JSON response when the PDF is uploaded):
+pages checked, the pages with low-contrast text (count and lowest ratio, original page numbers), and pages not
+checked (`noText`: scans or invisible text only; `timeUp`: after the 20 s budget). `PDF_CONTRAST_CHECK=0` turns
+it off. It never fails a build. The file is identical in both engines. Test: `python tests/test_contrast_check.py`.
+
 ## Run
 
 ```

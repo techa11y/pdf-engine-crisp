@@ -8,6 +8,7 @@ from resource_policy import RestrictedURLFetcher
 from visual_banner import banner_layout
 from visual_checkboxes import RasterBudget, checkbox_controls
 from field_order import check_field_order, ordered_html
+import contrast_check
 from native_form_fields import (FieldNames, apply_field_values, blank_for_raster, native_field_controls,
                                 read_native_fields, settle_radio_names)
 from a11y_labels import safe_lang, visual_link_label
@@ -481,6 +482,8 @@ async def build_pdf(
 
         ai_forms = normalize_forms_payload(corrected_forms_json)
         checkbox_budget = RasterBudget()
+        # Text contrast on the picture pages (contrast_check.py): measured and reported, colours never changed.
+        contrast = contrast_check.ContrastReport() if contrast_check.enabled() else None
         visual_checkboxes_placed = 0
         html_content = strip_duplicate_leading_title(html_content, pdf_title)
         # The original's own form fields (native_form_fields.py): names stay unique across the whole build.
@@ -495,6 +498,8 @@ async def build_pdf(
         for i in range(visual_count):
             page_orig = doc_orig[i]
             w, h = page_orig.rect.width, page_orig.rect.height
+            if contrast is not None:
+                contrast.check(doc_orig, i, i + 1)
             dynamic_css.append(f"@page page_{i} {{ size: {w}pt {h}pt; margin: 0; }}")
             
             img_path = f"/tmp/img_{req_id}_{i}.jpg"
@@ -765,6 +770,13 @@ async def build_pdf(
                         form_order["fields"], form_order["pages"], form_order["outOfOrderPages"],
                         form_order["noTabsPages"])
         _order_headers = {"X-Form-Order": json.dumps(form_order, separators=(",", ":"))}
+        contrast_info = contrast.as_dict() if contrast is not None else {"off": True}
+        if contrast is not None:
+            logger.info("[BUILD] contrast: %s picture page(s) checked, low-contrast text on pages %s; not checked %s",
+                        contrast_info["pagesChecked"], [p["page"] for p in contrast_info["lowContrastPages"]],
+                        contrast_info["notChecked"])
+        _contrast_headers = {"X-Contrast": json.dumps(contrast_info, separators=(",", ":"))}
+        _report_headers = {**_order_headers, **_contrast_headers}
 
         safe_filename = re.sub(r'[\\/:*?"<>|]+', " ", pdf_title).strip() or "accessible-document"
 
@@ -794,14 +806,15 @@ async def build_pdf(
                     "message": "PDF built and uploaded to Supabase",
                     "pdf_url": public_url,
                     "form_order": form_order,
+                    "contrast": contrast_info,
                 })
             except Exception as upload_error:
                 logger.error(f"Supabase Upload Failed: {str(upload_error)}")
                 background_tasks.add_task(cleanup_files, orig_path, weasy_out_path, intermediate_path, *temp_image_paths)
-                return FileResponse(path=final_path, filename=f"{safe_filename}.pdf", media_type="application/pdf", headers=_order_headers)
+                return FileResponse(path=final_path, filename=f"{safe_filename}.pdf", media_type="application/pdf", headers=_report_headers)
         else:
             background_tasks.add_task(cleanup_files, orig_path, weasy_out_path, intermediate_path, *temp_image_paths)
-            return FileResponse(path=final_path, filename=f"{safe_filename}.pdf", media_type="application/pdf", headers=_order_headers)
+            return FileResponse(path=final_path, filename=f"{safe_filename}.pdf", media_type="application/pdf", headers=_report_headers)
 
     except Exception as e:
         logger.error(f"MASTER BUILD CRITICAL FAILURE: {str(e)}")
