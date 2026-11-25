@@ -58,6 +58,16 @@ signatures stay as pictures. Text and choice values are written into the fields 
 the page), and the picture shows each field empty, so nothing shows twice. A page with such fields ignores the
 `corrected_forms_json` boxes. Test: `python tests/test_native_form_fields.py` (form: `tests/fillable_fixture.py`).
 
+## Picture pages: fields in reading order (`field_order.py`)
+
+A picture page's fields (the original's own, the worker's AI boxes, and printed checkboxes made tickable) are
+written in row order: top to bottom, left to right within a line. WeasyPrint tags them in that order and every
+page has `/Tabs /S`, so it is also the Tab order. Before, they were written list by list, so Tab visited every
+text field before any checkbox. After each build, `check_field_order` reads the finished PDF and reports pages
+whose fields are tagged out of row order or lack `/Tabs /S`: response header `X-Form-Order` (and `form_order`
+in the JSON response when the PDF is uploaded). veraPDF does not check field order. The file is identical in
+both engines. Test: `python tests/test_field_order.py`.
+
 ## Run
 
 ```
