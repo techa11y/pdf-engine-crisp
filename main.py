@@ -6,9 +6,10 @@ from visual_links import internal_visual_page
 from raster_budget import capped_dpi
 from resource_policy import RestrictedURLFetcher
 from visual_banner import banner_layout
-from visual_checkboxes import RasterBudget, checkbox_overlay
+from visual_checkboxes import RasterBudget, checkbox_controls
+from field_order import check_field_order, ordered_html
 import contrast_check
-from native_form_fields import (FieldNames, apply_field_values, blank_for_raster, native_fields_overlay,
+from native_form_fields import (FieldNames, apply_field_values, blank_for_raster, native_field_controls,
                                 read_native_fields, settle_radio_names)
 from a11y_labels import safe_lang, visual_link_label
 import lang_tags
@@ -579,20 +580,24 @@ async def build_pdf(
 
             # Layer 3: Forms. A page with the original's own fields takes those (exact spot, name, label,
             # value); the worker's AI boxes are only for a page without any.
+            page_controls = []  # (x0, y0, x1, y1, html) of every field on this page, written in row order below
             if native_fields:
-                nf_html, nf_values, nf_count = native_fields_overlay(native_fields, i, field_names)
-                block.append(nf_html)
+                nf_controls, nf_values, nf_count = native_field_controls(native_fields, i, field_names)
+                page_controls.extend(nf_controls)
                 native_field_values.update(nf_values)
                 native_fields_placed += nf_count
             else:
                 for field_index, field in enumerate(ai_forms.get(str(i), [])):
-                    block.append(build_form_control(i, field_index, field))
+                    page_controls.append((field.get("x0"), field.get("y0"), field.get("x1"), field.get("y1"),
+                                          build_form_control(i, field_index, field)))
             # Layer 3b: real checkboxes over the boxes printed on the original (visual_checkboxes.py),
             # so a box on a picture page can be ticked. Same coordinates as the links above.
-            cb_html, cb_count = checkbox_overlay(page_orig, i, checkbox_budget)
+            cb_controls, cb_count = checkbox_controls(page_orig, i, checkbox_budget)
             if cb_count:
-                block.append(cb_html)
+                page_controls.extend(cb_controls)
                 visual_checkboxes_placed += cb_count
+            # Tags follow HTML order and every page has /Tabs /S, so this order is the Tab order (field_order.py).
+            block.append(ordered_html(page_controls))
             
             # Layer 4: Footer Badge
             if guide_style == "v2":
@@ -759,12 +764,19 @@ async def build_pdf(
         pdf_out.close()
 
         repair_pdfua_annotations(input_pdf_path=intermediate_path, output_pdf_path=final_path, verbose=True)
+        form_order = check_field_order(final_path)  # read-only, never raises (field_order.py)
+        if form_order["fields"]:
+            logger.info("[BUILD] form fields: %s on %s page(s); out of order on pages %s; no /Tabs /S on pages %s",
+                        form_order["fields"], form_order["pages"], form_order["outOfOrderPages"],
+                        form_order["noTabsPages"])
+        _order_headers = {"X-Form-Order": json.dumps(form_order, separators=(",", ":"))}
         contrast_info = contrast.as_dict() if contrast is not None else {"off": True}
         if contrast is not None:
             logger.info("[BUILD] contrast: %s picture page(s) checked, low-contrast text on pages %s; not checked %s",
                         contrast_info["pagesChecked"], [p["page"] for p in contrast_info["lowContrastPages"]],
                         contrast_info["notChecked"])
         _contrast_headers = {"X-Contrast": json.dumps(contrast_info, separators=(",", ":"))}
+        _report_headers = {**_order_headers, **_contrast_headers}
 
         safe_filename = re.sub(r'[\\/:*?"<>|]+', " ", pdf_title).strip() or "accessible-document"
 
@@ -793,15 +805,16 @@ async def build_pdf(
                     "status": "success", 
                     "message": "PDF built and uploaded to Supabase",
                     "pdf_url": public_url,
+                    "form_order": form_order,
                     "contrast": contrast_info,
                 })
             except Exception as upload_error:
                 logger.error(f"Supabase Upload Failed: {str(upload_error)}")
                 background_tasks.add_task(cleanup_files, orig_path, weasy_out_path, intermediate_path, *temp_image_paths)
-                return FileResponse(path=final_path, filename=f"{safe_filename}.pdf", media_type="application/pdf", headers=_contrast_headers)
+                return FileResponse(path=final_path, filename=f"{safe_filename}.pdf", media_type="application/pdf", headers=_report_headers)
         else:
             background_tasks.add_task(cleanup_files, orig_path, weasy_out_path, intermediate_path, *temp_image_paths)
-            return FileResponse(path=final_path, filename=f"{safe_filename}.pdf", media_type="application/pdf", headers=_contrast_headers)
+            return FileResponse(path=final_path, filename=f"{safe_filename}.pdf", media_type="application/pdf", headers=_report_headers)
 
     except Exception as e:
         logger.error(f"MASTER BUILD CRITICAL FAILURE: {str(e)}")

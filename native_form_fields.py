@@ -314,9 +314,17 @@ def _font_css_pt(nf: NativeField) -> float:
 
 def native_fields_overlay(fields: list, page_index: int, names: FieldNames) -> tuple:
     """(HTML for real fields over the picture, {field name: value to write after WeasyPrint}, count)."""
+    controls, values, count = native_field_controls(fields, page_index, names)
+    return "".join(c[4] for c in controls), values, count
+
+
+def native_field_controls(fields: list, page_index: int, names: FieldNames) -> tuple:
+    """Like native_fields_overlay, with each field's HTML kept apart as (x0, y0, x1, y1, html), so the
+    caller can put every field on the page in reading order (field_order.py)."""
     parts, values = [], {}
     for n, nf in enumerate(fields, start=1):
         r = nf.rect
+        box = (r.x0, r.y0, r.x1, r.y1)
         name = names.take(nf.name, page_index, nf.kind)
         esc_name = _html.escape(name, quote=True)
         label = _html.escape(nf.label, quote=True)
@@ -328,28 +336,28 @@ def native_fields_overlay(fields: list, page_index: int, names: FieldNames) -> t
             if nf.kind == "radio":
                 names.radio_labels.setdefault(name, nf.group_label)
             checked = " checked" if nf.checked else ""
-            parts.append(f'<input type="{nf.kind}" {common} value="{_html.escape(nf.export, quote=True)}"{checked} '
-                         f'style="{style}" />')
+            parts.append((*box, f'<input type="{nf.kind}" {common} value="{_html.escape(nf.export, quote=True)}"{checked} '
+                         f'style="{style}" />'))
             continue
         text_style = f'{style} font-family:Arial,Helvetica,sans-serif; font-size:{_font_css_pt(nf)}pt; color:#000;'
         if nf.kind == "select":
             options = "".join(f'<option value="{_html.escape(v, quote=True)}">{_html.escape(t)}</option>'
                               for v, t in nf.options)
             multiple = " multiple" if nf.multiple else ""
-            parts.append(f'<select {common}{multiple} style="{text_style}">{options}</select>')
+            parts.append((*box, f'<select {common}{multiple} style="{text_style}">{options}</select>'))
             chosen = [s for s in nf.selected if s in {v for v, _ in nf.options}]
             if chosen:
                 values[name] = chosen if nf.multiple else chosen[-1]
         elif nf.kind == "textarea":
-            parts.append(f'<textarea {common} style="{text_style}"></textarea>')
+            parts.append((*box, f'<textarea {common} style="{text_style}"></textarea>'))
             if nf.value:
                 values[name] = nf.value
         else:
             maxlen = f' maxlength="{nf.maxlen}"' if nf.maxlen > 0 else ""
-            parts.append(f'<input type="{nf.kind}" {common}{maxlen} style="{text_style}" />')
+            parts.append((*box, f'<input type="{nf.kind}" {common}{maxlen} style="{text_style}" />'))
             if nf.value:
                 values[name] = nf.value
-    return "".join(parts), values, len(fields)
+    return parts, values, len(fields)
 
 
 def settle_radio_names(doc: "fitz.Document", groups: dict) -> int:

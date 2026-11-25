@@ -348,21 +348,28 @@ def checkbox_overlay(page: "fitz.Page", page_index: int, budget: "RasterBudget |
 
     Coordinates are the original page's points, like the link overlays, so the boxes sit in the same
     (scaled) container as the picture."""
+    controls, count = checkbox_controls(page, page_index, budget)
+    return "".join(c[4] for c in controls), count
+
+
+def checkbox_controls(page: "fitz.Page", page_index: int, budget: "RasterBudget | None" = None) -> tuple:
+    """Like checkbox_overlay, with each checkbox kept apart as (x0, y0, x1, y1, html), so the caller can
+    put every field on the page in reading order (field_order.py)."""
     try:
         boxes = detect_checkboxes(page, allow_raster=budget.left() if budget else True)
     except Exception:
-        return "", 0
+        return [], 0
     if not boxes:
-        return "", 0
+        return [], 0
     names = name_checkboxes(page, boxes, page_index + 1)
     parts = []
     for n, (r, name) in enumerate(zip(boxes, names), start=1):
         label = _html.escape(name, quote=True)
-        parts.append(
+        parts.append((r.x0, r.y0, r.x1, r.y1,
             f'<input type="checkbox" id="vcb_{page_index}_{n}" name="visual_p{page_index + 1}_cb{n}" '
             f'title="{label}" aria-label="{label}" '
             f'style="position:absolute; left:{round(r.x0, 2)}pt; top:{round(r.y0, 2)}pt; '
             f'width:{round(r.width, 2)}pt; height:{round(r.height, 2)}pt; margin:0; padding:0; '
             f'border:none; background:transparent; z-index:95;" />'
-        )
-    return "".join(parts), len(boxes)
+        ))
+    return parts, len(boxes)
