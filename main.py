@@ -7,6 +7,7 @@ from raster_budget import capped_dpi
 from resource_policy import RestrictedURLFetcher
 from visual_banner import banner_layout
 from visual_checkboxes import RasterBudget, checkbox_overlay
+import contrast_check
 from native_form_fields import (FieldNames, apply_field_values, blank_for_raster, native_fields_overlay,
                                 read_native_fields, settle_radio_names)
 from a11y_labels import safe_lang, visual_link_label
@@ -480,6 +481,8 @@ async def build_pdf(
 
         ai_forms = normalize_forms_payload(corrected_forms_json)
         checkbox_budget = RasterBudget()
+        # Text contrast on the picture pages (contrast_check.py): measured and reported, colours never changed.
+        contrast = contrast_check.ContrastReport() if contrast_check.enabled() else None
         visual_checkboxes_placed = 0
         html_content = strip_duplicate_leading_title(html_content, pdf_title)
         # The original's own form fields (native_form_fields.py): names stay unique across the whole build.
@@ -494,6 +497,8 @@ async def build_pdf(
         for i in range(visual_count):
             page_orig = doc_orig[i]
             w, h = page_orig.rect.width, page_orig.rect.height
+            if contrast is not None:
+                contrast.check(doc_orig, i, i + 1)
             dynamic_css.append(f"@page page_{i} {{ size: {w}pt {h}pt; margin: 0; }}")
             
             img_path = f"/tmp/img_{req_id}_{i}.jpg"
@@ -754,6 +759,12 @@ async def build_pdf(
         pdf_out.close()
 
         repair_pdfua_annotations(input_pdf_path=intermediate_path, output_pdf_path=final_path, verbose=True)
+        contrast_info = contrast.as_dict() if contrast is not None else {"off": True}
+        if contrast is not None:
+            logger.info("[BUILD] contrast: %s picture page(s) checked, low-contrast text on pages %s; not checked %s",
+                        contrast_info["pagesChecked"], [p["page"] for p in contrast_info["lowContrastPages"]],
+                        contrast_info["notChecked"])
+        _contrast_headers = {"X-Contrast": json.dumps(contrast_info, separators=(",", ":"))}
 
         safe_filename = re.sub(r'[\\/:*?"<>|]+', " ", pdf_title).strip() or "accessible-document"
 
@@ -781,15 +792,16 @@ async def build_pdf(
                 return JSONResponse(content={
                     "status": "success", 
                     "message": "PDF built and uploaded to Supabase",
-                    "pdf_url": public_url
+                    "pdf_url": public_url,
+                    "contrast": contrast_info,
                 })
             except Exception as upload_error:
                 logger.error(f"Supabase Upload Failed: {str(upload_error)}")
                 background_tasks.add_task(cleanup_files, orig_path, weasy_out_path, intermediate_path, *temp_image_paths)
-                return FileResponse(path=final_path, filename=f"{safe_filename}.pdf", media_type="application/pdf")
+                return FileResponse(path=final_path, filename=f"{safe_filename}.pdf", media_type="application/pdf", headers=_contrast_headers)
         else:
             background_tasks.add_task(cleanup_files, orig_path, weasy_out_path, intermediate_path, *temp_image_paths)
-            return FileResponse(path=final_path, filename=f"{safe_filename}.pdf", media_type="application/pdf")
+            return FileResponse(path=final_path, filename=f"{safe_filename}.pdf", media_type="application/pdf", headers=_contrast_headers)
 
     except Exception as e:
         logger.error(f"MASTER BUILD CRITICAL FAILURE: {str(e)}")
