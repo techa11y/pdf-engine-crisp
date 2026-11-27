@@ -8,6 +8,7 @@ from resource_policy import RestrictedURLFetcher
 from visual_banner import banner_layout
 from visual_checkboxes import RasterBudget, checkbox_controls
 from field_order import check_field_order, ordered_html
+from reading_check import check_reading
 import contrast_check
 from native_form_fields import (FieldNames, apply_field_values, blank_for_raster, native_field_controls,
                                 read_native_fields, settle_radio_names)
@@ -776,7 +777,14 @@ async def build_pdf(
                         contrast_info["pagesChecked"], [p["page"] for p in contrast_info["lowContrastPages"]],
                         contrast_info["notChecked"])
         _contrast_headers = {"X-Contrast": json.dumps(contrast_info, separators=(",", ":"))}
-        _report_headers = {**_order_headers, **_contrast_headers}
+        reading = check_reading(final_path)  # keyboard + screen-reader check, read-only, never raises (reading_check.py)
+        logger.info("[BUILD] reading check: %s link(s), %s field(s), %s untagged; %s heading(s), %s/%s image(s) described, "
+                    "%s/%s table(s) with header cells; %s ms%s", reading["keyboard"]["links"], reading["keyboard"]["fields"],
+                    reading["keyboard"]["untaggedLinks"] + reading["keyboard"]["untaggedFields"], reading["reader"]["headings"],
+                    reading["reader"]["imagesDescribed"], reading["reader"]["images"], reading["reader"]["tablesWithHeaders"],
+                    reading["reader"]["tables"], reading.get("ms"), " (time up)" if reading.get("timeUp") else "")
+        _report_headers = {**_order_headers, **_contrast_headers,
+                           "X-Reading-Check": json.dumps(reading, separators=(",", ":"))}
 
         safe_filename = re.sub(r'[\\/:*?"<>|]+', " ", pdf_title).strip() or "accessible-document"
 
@@ -807,6 +815,7 @@ async def build_pdf(
                     "pdf_url": public_url,
                     "form_order": form_order,
                     "contrast": contrast_info,
+                    "reading_check": reading,
                 })
             except Exception as upload_error:
                 logger.error(f"Supabase Upload Failed: {str(upload_error)}")

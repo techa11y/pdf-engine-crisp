@@ -83,6 +83,24 @@ pages checked, the pages with low-contrast text (count and lowest ratio, origina
 checked (`noText`: scans or invisible text only; `timeUp`: after the 20 s budget). `PDF_CONTRAST_CHECK=0` turns
 it off. It never fails a build. The file is identical in both engines. Test: `python tests/test_contrast_check.py`.
 
+## Automatic keyboard and screen-reader check (`reading_check.py`)
+
+Every build reads the finished PDF's tags the way a screen reader (NVDA, JAWS) and Acrobat's keyboard navigation
+do, and reports what a keyboard or screen-reader user will meet (checklist 5.2 keyboard, 5.3 screen reader, 5.4
+date; the TechA11y platform words it in each document's Accessibility notes, dated):
+- keyboard: links and form fields (a radio group counts once), any Link or Widget annotation missing from the
+  structure tree (the Tab key may skip it), and pages with annotations but no `/Tabs /S`;
+- screen reader: `/Lang`, the title and `DisplayDocTitle`; headings and skipped levels; images (Figures) with
+  and without Alt / ActualText, and descriptions that are a file name or a placeholder word; tables with and
+  without header cells (TH); lists whose children are not list items.
+
+The report is in the `X-Reading-Check` header (and `reading_check` in the JSON response when the PDF is
+uploaded): counts and page numbers of the accessible PDF, never the document's words, plus `checkedAt` (UTC),
+`pages`, `timeUp` (after the 15 s budget) and `error` (a file it could not read). It only reads, never raises
+and never fails a build. On crisp builds the worker's post-build chain then repairs heading levels and empty
+figures, so those counts can be higher here than in the served file. The file is identical in both engines.
+Test: `python tests/test_reading_check.py`.
+
 ## Run
 
 ```
